@@ -23,12 +23,20 @@ before_script:
 
 stages:
 - sanity
+- linters
 - build
 
 matrix:
   include:
     - stage: sanity
       script: if comm -23 <( echo "$FILES_CHANGED" ) <( echo "$TRAVIS_DOCKERFILES" ) | grep Dockerfile. ; then echo "Dockerfile modified but not tracked by Travis." >&2 ; exit 1 ; else echo "No unexpected Dockerfile changes, OK." ; fi
+    - stage: linters
+      env:
+      - dockerfiles="Dockerfile.centos-7 Dockerfile.centos-8 Dockerfile.fedora-23 Dockerfile.fedora-24 Dockerfile.fedora-25 Dockerfile.fedora-26 Dockerfile.fedora-27 Dockerfile.fedora-28 Dockerfile.fedora-29 Dockerfile.fedora-30 Dockerfile.fedora-31 Dockerfile.fedora-32 Dockerfile.fedora-rawhide Dockerfile.rhel-7 Dockerfile.rhel-8"
+      script:
+      - docker run --rm -it -v "$PWD:/data:z" -w "/data" hadolint/hadolint /bin/hadolint $dockerfiles || exit 1
+      - docker run --rm -it -v "$PWD:/data:z" -w "/data" koalaman/shellcheck $( find . -name '*.sh' ) || exit 2
+      - docker run --rm -it -v "$PWD:/data:z" -w "/data" markdownlint/markdownlint README || exit 3
     - stage: build
       env: dockerfile=fedora-32 readonly=--read-only
     - stage: build
