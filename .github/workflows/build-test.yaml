@@ -217,6 +217,9 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
+          [ "${DOCKER_IMAGE_BASE}" == "" ] && echo "ERROR: DOCKER_IMAGE_BASE is empty" && exit 2
+          [ "${DOCKER_USERNAME}" == "" ] && echo "ERROR: DOCKER_USERNAME is empty" && exit 2
+          [ "${DOCKER_PASSWORD}" == "" ] && echo "ERROR: DOCKER_PASSWORD is empty" && exit 2
           DOCKER_SERVER="${DOCKER_IMAGE_BASE%%/*}"
           echo "$DOCKER_PASSWORD" | skopeo login --authfile=auth.json -u "$DOCKER_USERNAME" --password-stdin "${DOCKER_SERVER}"
       - uses: actions/download-artifact@v2
