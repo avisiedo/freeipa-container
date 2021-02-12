@@ -191,34 +191,62 @@ jobs:
       REGISTRY_TARGET_LIST: "${{ secrets.REGISTRY_TARGET_LIST }}"
       REGISTRY_CREDENTIALS_FILE: "${{ secrets.REGISTRY_CREDENTIALS_FILE }}"
     steps:
-      - name: Check secrets
+      - name: Check settings
         id: check
         run: |
-          [ "${REGISTRY_CREDENTIALS_FILE}" == "" ] && {
-            echo "REGISTRY_CREDENTIALS_FILE is empty"
-            echo "::set-output name=are-valid-credentials::false"
-            exit 0
-          }
-          [ "${REGISTRY_TARGET_LIST}" == "" ] && {
-            echo "REGISTRY_TARGET_LIST is empty"
-            echo "::set-output name=are-valid-credentials::false"
-            exit 0
-          }
-          IFS=":" read -a TARGET_LIST <<< "${REGISTRY_TARGET_LIST}"
-          [ ${#TARGET_LIST[@]} -eq 0 ] && {
-            echo "TARGET_LIST is empty; Check your REGISTRY_TARGET_LIST secret in your repository settings"
-            echo "::set-output name=are-valid-credentials::false"
-            exit 0
-          }
-          echo "::set-output name=are-valid-credentials::true"
+          # Check the branch is allowed to push the image
+          read -a BRANCH_LIST <<< "${REGISTRY_ALLOWED_BRANCH_LIST}"
+          if [ ${#BRANCH_LIST[@]} -eq 0 ]; then
+            is_branch_allowed=0
+          else
+            is_branch_allowed=0
+            for branch in ${BRANCH_LIST[@]}; do
+              [ "refs/heads/${branch}" == ${{ github.branch }} ] && {
+                is_branch_allowed=1
+                break
+              }
+            done
+          fi
+
+          # Check the credentials are filled
+          if [ "${REGISTRY_CREDENTIALS_FILE}" != "" ]; then
+            are_credentials_present=1
+          else
+            echo "REGISTRY_CREDENTIALS_FILE secret is empty or does not exist"
+            are_credentials_present=0
+          fi
+
+          # Check the target list
+          if [ "${REGISTRY_TARGET_LIST}" == "" ]; then
+            echo "REGISTRY_TARGET_LIST secret is empty or does not exist"
+            has_target_list=0
+          else
+            IFS=":" read -a TARGET_LIST <<< "${REGISTRY_TARGET_LIST}"
+            if [ ${#TARGET_LIST[@]} -eq 0 ]; then
+              echo "Check REGISTRY_TARGET_LIST secret in your repository settings"
+              has_target_list=0
+            else
+              has_target_list=1
+            fi
+          fi
+
+          # Set the output value
+          if [ "${is_branch_allowed}" -eq 1 ] \
+             && [ "${are_credentials_present}" -eq 1 ] \
+             && [ "${has_target_list}" -eq 1 ]; then
+            echo "::set-output name=is-allowed-to-push::true"
+          else
+            echo "::set-output name=is-allowed-to-push::false"
+          fi
+
     outputs:
-      are-valid-credentials: ${{ steps.check.outputs.are-valid-credentials }}
+      is-allowed-to-push: ${{ steps.check.outputs.is-allowed-to-push }}
 
   push-after-success:
     name: Delivery images to registries
     runs-on: ubuntu-20.04
     needs: [ push-after-success-precondition ]
-    if: needs.push-after-success-precondition.outputs.are-valid-credentials == 'true' && github.event_name != 'pull_request' && github.repository == 'freeipa/freeipa-container' && github.ref == 'refs/heads/master'
+    if: needs.push-after-success-precondition.outputs.is-allowed-to-push == 'true' && github.event_name != 'pull_request'
     env:
       REGISTRY_TARGET_LIST: "${{ secrets.REGISTRY_TARGET_LIST }}"
     steps:
